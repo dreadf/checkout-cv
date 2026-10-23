@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.DS_Store
+
+# Foto dataset ada di Google Drive (lihat README)
+data/
+
+# Model FastSAM diunduh otomatis oleh tools/click_label.py
+FastSAM-s.pt
+
+# Sementara belum ikut commit. Hapus barisnya saat mau dimasukkan
+README.md
+requirements.txt
