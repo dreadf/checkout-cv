@@ -1,4 +1,4 @@
-"""Ukur seberapa baik model mengenali barang pada foto tes (data/scene_photos_test/).
+"""Ukur seberapa baik model mengenali barang pada foto tes (samples/).
 
 Cara pakai dari folder utama repo:
     python evaluation/evaluate.py
@@ -30,7 +30,7 @@ import config
 from app.detector import detect
 from app.products import load_products
 
-TEST_DIR = config.DATA_DIR / "scene_photos_test"
+TEST_DIR = config.SAMPLES_DIR
 MISSED = "(tidak terdeteksi)"
 EXTRA = "(benda ekstra)"
 
@@ -64,7 +64,7 @@ def count_items(detections, conf):
 
 def compare(truth, predicted):
     """Bandingkan jumlah benar dan jumlah tebakan satu adegan. Hasilnya (tp, fp, fn) per produk."""
-    names = set(truth) | set(predicted)
+    names = sorted(set(truth) | set(predicted))
     tp = {name: min(truth[name], predicted[name]) for name in names}
     fp = {name: max(predicted[name] - truth[name], 0) for name in names}
     fn = {name: max(truth[name] - predicted[name], 0) for name in names}
