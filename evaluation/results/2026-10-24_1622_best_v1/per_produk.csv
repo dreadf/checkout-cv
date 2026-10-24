@@ -1,0 +1,9 @@
+produk,benar,salah_ada,terlewat,precision,recall
+aqua_600ml,4,0,22,1.0,0.154
+le_minerale_600ml,13,6,4,0.684,0.765
+walens_blueberry,13,10,0,0.565,1.0
+cussons_baby_wipes,6,0,11,1.0,0.353
+hansaplast_10,16,3,4,0.842,0.8
+kahf_revered,6,0,7,1.0,0.462
+soffell_kulit_jeruk,4,0,12,1.0,0.25
+vaseline_uv_brightening,5,0,5,1.0,0.5
