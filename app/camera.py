@@ -35,3 +35,19 @@ def resize_to_width(frame):
 def preprocess(frame):
     """Crop lalu resize. Foto training dan frame live harus lewat fungsi ini."""
     return resize_to_width(crop_to_table(frame))
+
+
+def camera_problem(frame, previous_frame):
+    """'gelap', 'terhalang', 'membeku', atau None kalau kamera sehat.
+
+    Macet dicek dengan satu kali sama persis piksel per piksel, bukan beberapa frame berturut-turut,
+    karena sensor kamera asli selalu punya sedikit noise, jadi frame yang identik sudah cukup aneh.
+    """
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    if hsv[:, :, 2].mean() < config.CAMERA_DARK_V:
+        return "gelap"
+    if cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).std() < config.CAMERA_BLOCKED_STD:
+        return "terhalang"
+    if previous_frame is not None and frame.shape == previous_frame.shape and (frame == previous_frame).all():
+        return "membeku"
+    return None
