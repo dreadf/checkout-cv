@@ -8,4 +8,6 @@ data/
 # Model FastSAM diunduh otomatis oleh tools/click_label.py
 FastSAM-s.pt
 
-
+# Log transaksi. Isinya tidak masuk git, hanya .gitkeep
+logs/**
+!logs/.gitkeep

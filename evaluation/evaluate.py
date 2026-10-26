@@ -2,7 +2,7 @@
 
 Cara pakai dari folder utama repo:
     python evaluation/evaluate.py
-    python evaluation/evaluate.py --model models/bestv1.pt --conf 0.5
+    python evaluation/evaluate.py --model best_v1.pt --conf 0.5
 
 Foto tes dibandingkan dengan daftar barang yang benar di scenes.csv. Perbandingannya berdasarkan
 jumlah barang per produk, bukan posisi kotak, karena foto tes hanya punya daftar barang.
@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import config
+from app import checks
 from app.detector import detect
 from app.products import load_products
 
@@ -53,7 +54,8 @@ def load_scenes():
             for entry in row["items"].split("|"):
                 name, _, qty = entry.partition(":")
                 truth[name] += int(qty) if qty else 1
-            scenes.append({"file": row["file"], "truth": truth, "category": row["category"]})
+            scenes.append({"file": row["file"], "truth": truth, "category": row["category"],
+                           "should_lock": row["should_lock"].strip().lower() == "yes"})
     return scenes
 
 
@@ -136,6 +138,29 @@ def write_csv(path, header, rows):
         writer.writerows(rows)
 
 
+def score_lock(scenes, predictions, background, conf):
+    """Bandingkan prediksi kunci (benda asing atau barang di tepi) dengan should_lock di scenes.csv.
+
+    Cek gerakan dan kesehatan kamera butuh dua frame berurutan, jadi tidak bisa diuji jujur dari
+    foto diam. Hanya benda asing dan tepi yang dihitung di sini. Hasilnya (rows, ringkasan).
+    """
+    rows = []
+    for scene, detections in zip(scenes, predictions):
+        frame = cv2.imread(str(TEST_DIR / scene["file"]))
+        known_boxes = [d["box"] for d in detections if d["conf"] >= conf]
+        blobs = checks.find_object_blobs(frame, background)
+        conditions = checks.table_conditions(frame, None, blobs, known_boxes)
+        locked = bool(conditions["tidak_dikenal"] or conditions["tepi"])
+        rows.append({"file": scene["file"], "category": scene["category"],
+                      "should_lock": scene["should_lock"], "locked": locked})
+    tp = sum(r["locked"] and r["should_lock"] for r in rows)
+    fn = sum((not r["locked"]) and r["should_lock"] for r in rows)
+    fp = sum(r["locked"] and (not r["should_lock"]) for r in rows)
+    tn = sum((not r["locked"]) and (not r["should_lock"]) for r in rows)
+    summary = {"benar_terkunci": ratio(tp, tp + fn), "salah_kunci": ratio(fp, fp + tn)}
+    return rows, summary
+
+
 def plot_confusion(path, confusion, names):
     """Gambar confusion matrix. Baris: yang sebenarnya. Kolom: tebakan."""
     rows, cols = names + [EXTRA], names + [MISSED]
@@ -165,7 +190,9 @@ def main():
     names = list(products)
     scenes = load_scenes()
     model = YOLO(args.model)
-    predictions = [detect(model, cv2.imread(str(TEST_DIR / scene["file"]))) for scene in scenes]
+    # Sama seperti aplikasi: kotak kembar dibuang dulu sebelum dihitung.
+    predictions = [checks.remove_overlaps(detect(model, cv2.imread(str(TEST_DIR / scene["file"]))))
+                   for scene in scenes]
 
     out_dir = config.EVAL_RESULTS_DIR / f"{datetime.now():%Y-%m-%d_%H%M}_{Path(args.model).stem}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -192,6 +219,20 @@ def main():
     write_csv(out_dir / "confusion_matrix.csv", ["sebenarnya"] + names + [MISSED],
               [[r] + [confusion[(r, c)] for c in names + [MISSED]] for r in names + [EXTRA]])
     plot_confusion(out_dir / "confusion_matrix.png", confusion, names)
+
+    photos_dir = config.DATA_DIR / "product_photos"
+    if photos_dir.exists():
+        from tools.auto_label import build_background
+        photos = [p for folder in sorted(photos_dir.iterdir()) if folder.is_dir() for p in sorted(folder.glob("*.jpg"))]
+        background = build_background(photos)
+        kunci_rows, kunci_summary = score_lock(scenes, predictions, background, args.conf)
+        write_csv(out_dir / "kunci.csv", ["foto", "kategori", "should_lock", "terkunci"],
+                  [[r["file"], r["category"], r["should_lock"], r["locked"]] for r in kunci_rows])
+        print(f"Kunci: benar terkunci {fmt(kunci_summary['benar_terkunci'])}, "
+              f"salah kunci {fmt(kunci_summary['salah_kunci'])} (hanya benda asing dan tepi, "
+              f"gerakan dan kamera tidak bisa diuji dari foto diam)")
+    else:
+        print("data/product_photos tidak ada, lewati pengukuran kunci (kunci.csv tidak dibuat)")
 
     total = summarize(rows)
     print(f"Model: {args.model}")
