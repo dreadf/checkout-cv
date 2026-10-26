@@ -64,7 +64,7 @@ def find_object_blobs(frame, background):
     for contour in contours:
         area = cv2.contourArea(contour)
         x, y, w, h = cv2.boundingRect(contour)
-        if area >= config.MIN_BLOB_AREA and min(w, h) >= config.MIN_BLOB_SIDE:
+        if area >= config.MIN_LIVE_BLOB_AREA and min(w, h) >= config.MIN_BLOB_SIDE:
             blob_mask = np.zeros(mask.shape[:2], dtype=np.uint8)
             cv2.drawContours(blob_mask, [contour], -1, 255, thickness=cv2.FILLED)
             blobs.append({"box": (x, y, x + w, y + h), "area": area, "mask": blob_mask})
@@ -85,7 +85,7 @@ def _covered_ratio(mask, known_boxes):
     return (object_pixels & covered).sum() / total
 
 
-def _uncovered(blobs, known_boxes):
+def uncovered_blobs(blobs, known_boxes):
     """Benda yang sebagian besar areanya tidak tertutup kotak produk dikenal."""
     return [b for b in blobs if _covered_ratio(b["mask"], known_boxes) < config.OBJECT_COVER_MIN]
 
@@ -121,13 +121,15 @@ def remove_overlaps(items):
 
 
 def is_moving(frame, previous_frame):
-    """True kalau bagian piksel yang berubah dari frame sebelumnya di atas MOTION_MIN."""
+    """Bagian piksel yang berubah dari frame sebelumnya kalau di atas MOTION_MIN, selain itu 0.
+    Angkanya ikut ditampilkan ke pembeli, jadi gampang dibandingkan dengan MOTION_MIN saat menyetel."""
     if previous_frame is None or frame.shape != previous_frame.shape:
-        return False
+        return 0.0
     gray1 = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(previous_frame, cv2.COLOR_BGR2GRAY)
     diff = cv2.absdiff(gray1, gray2)
-    return (diff > config.MOTION_PIXEL_DIFF).mean() > config.MOTION_MIN
+    changed = float((diff > config.MOTION_PIXEL_DIFF).mean())
+    return changed if changed > config.MOTION_MIN else 0.0
 
 
 def table_conditions(frame, previous_frame, blobs, known_boxes):
@@ -139,7 +141,7 @@ def table_conditions(frame, previous_frame, blobs, known_boxes):
     YOLO tapi kotaknya menyentuh pinggir frame tidak dianggap masalah, karena TABLE_REGION dipotong pas
     dengan area taruh barang. Nilai 0 berarti tidak ada masalah.
     """
-    uncovered = _uncovered(blobs, known_boxes)
+    uncovered = uncovered_blobs(blobs, known_boxes)
     near_edge = [b for b in uncovered if _is_near_edge(b, frame.shape)]
     return {
         "tepi": len(near_edge),
